@@ -1,0 +1,95 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Ростелеком - Точка входа</title>
+    <link rel="icon" type="image/png" href="/static/img/logo.png">
+    <link rel="stylesheet" href="/static/css/common.css">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="logo">
+                <img src="/static/img/logo.png" alt="Ростелеком">
+            </div>
+            
+            <div class="welcome-text">
+                <h2>Добро пожаловать</h2>
+                <p>Войдите в систему цифрового пропуска</p>
+            </div>
+            
+            <div class="input-group">
+                <label>📧 Корпоративная почта</label>
+                <input type="email" id="login-email" placeholder="ivanov@rt.ru">
+            </div>
+            <div class="input-group">
+                <label>🔒 Пароль</label>
+                <input type="password" id="login-password" placeholder="Введите пароль">
+            </div>
+            <button onclick="login()">Войти в систему</button>
+            <div id="login-message" class="message"></div>
+            
+            <div class="link">
+                <p>Нет аккаунта? <a href="/register">Зарегистрироваться</a></p>
+            </div>
+            
+            <div class="info-text">
+                🔐 Только для сотрудников Ростелеком<br>
+                Регистрация по корпоративной почте @rt.ru
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        async function login() {
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            const messageDiv = document.getElementById('login-message');
+            
+            if (!email || !password) {
+                showMessage(messageDiv, 'Заполните все поля', 'error');
+                return;
+            }
+            
+            if (!email.endsWith('@rt.ru')) {
+                showMessage(messageDiv, 'Используйте корпоративную почту @rt.ru', 'error');
+                return;
+            }
+            
+            const formData = new URLSearchParams();
+            formData.append('username', email);
+            formData.append('password', password);
+            
+            try {
+                const response = await fetch('/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formData
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('user_email', email);
+                    window.location.href = '/dashboard';
+                } else {
+                    showMessage(messageDiv, data.detail || 'Ошибка авторизации', 'error');
+                }
+            } catch (error) {
+                showMessage(messageDiv, 'Ошибка соединения с сервером', 'error');
+            }
+        }
+        
+        function showMessage(element, text, type) {
+            element.textContent = text;
+            element.className = message ;
+            setTimeout(() => {
+                element.style.display = 'none';
+            }, 5000);
+        }
+        
+        document.addEventListener('contextmenu', (e) => e.preventDefault());
+    </script>
+</body>
+</html>

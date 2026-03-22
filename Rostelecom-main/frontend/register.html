@@ -1,0 +1,288 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Ростелеком - Регистрация</title>
+    <link rel="icon" type="image/png" href="/static/img/logo.png">
+    <link rel="stylesheet" href="/static/css/common.css">
+    <style>
+        .code-input {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        
+        .code-input input {
+            width: 50px;
+            height: 55px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+        }
+        
+        .code-input input:focus {
+            border-color: #00A0E3;
+            outline: none;
+        }
+        
+        .resend-btn {
+            background: none;
+            color: #0054A6;
+            padding: 8px;
+            font-size: 13px;
+            margin-top: 5px;
+            width: auto;
+        }
+        
+        .resend-btn:hover {
+            background: #f0f0f0;
+            transform: none;
+        }
+        
+        .resend-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="logo">
+                <img src="/static/img/logo.png" alt="Ростелеком">
+            </div>
+            
+            <div class="welcome-text">
+                <h2>Регистрация</h2>
+                <p>Создайте аккаунт для доступа к цифровому пропуску</p>
+            </div>
+            
+            <div id="register-form">
+                <div class="input-group">
+                    <label>📧 Корпоративная почта (@rt.ru)</label>
+                    <input type="email" id="register-email" placeholder="ivanov@rt.ru">
+                </div>
+                <div class="input-group">
+                    <label>👤 Полное имя</label>
+                    <input type="text" id="register-name" placeholder="Иванов Иван Иванович">
+                </div>
+                <div class="input-group">
+                    <label>🔒 Пароль</label>
+                    <input type="password" id="register-password" placeholder="Минимум 6 символов">
+                </div>
+                <div class="input-group">
+                    <label>🔒 Подтверждение пароля</label>
+                    <input type="password" id="register-password2" placeholder="Повторите пароль">
+                </div>
+                <button onclick="sendVerificationCode()">Получить код подтверждения</button>
+                <div id="register-message" class="message"></div>
+            </div>
+            
+            <div id="verify-form" style="display:none;">
+                <div class="input-group">
+                    <label>📨 Введите код из письма</label>
+                    <div class="code-input">
+                        <input type="text" maxlength="1" class="code-digit" data-index="0">
+                        <input type="text" maxlength="1" class="code-digit" data-index="1">
+                        <input type="text" maxlength="1" class="code-digit" data-index="2">
+                        <input type="text" maxlength="1" class="code-digit" data-index="3">
+                        <input type="text" maxlength="1" class="code-digit" data-index="4">
+                        <input type="text" maxlength="1" class="code-digit" data-index="5">
+                    </div>
+                </div>
+                <button onclick="verifyCode()">Подтвердить регистрацию</button>
+                <button class="resend-btn" onclick="resendCode()" id="resend-btn">Отправить код повторно</button>
+                <div id="verify-message" class="message"></div>
+            </div>
+            
+            <div class="link">
+                <p>Уже есть аккаунт? <a href="/">Войти</a></p>
+            </div>
+            
+            <div class="info-text">
+                🔐 Только для сотрудников Ростелеком<br>
+                На указанную почту придет код подтверждения
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let pendingRegistration = null;
+        let resendTimer = null;
+        let timeLeft = 60;
+        
+        async function sendVerificationCode() {
+            const email = document.getElementById('register-email').value;
+            const name = document.getElementById('register-name').value;
+            const password = document.getElementById('register-password').value;
+            const password2 = document.getElementById('register-password2').value;
+            const messageDiv = document.getElementById('register-message');
+            
+            if (!email || !name || !password) {
+                showMessage(messageDiv, 'Заполните все поля', 'error');
+                return;
+            }
+            
+            if (!email.endsWith('@rt.ru')) {
+                showMessage(messageDiv, 'Регистрация только по корпоративной почте @rt.ru', 'error');
+                return;
+            }
+            
+            if (password.length < 6) {
+                showMessage(messageDiv, 'Пароль должен быть не менее 6 символов', 'error');
+                return;
+            }
+            
+            if (password !== password2) {
+                showMessage(messageDiv, 'Пароли не совпадают', 'error');
+                return;
+            }
+            
+            pendingRegistration = { email, name, password };
+            
+            try {
+                const response = await fetch('/send-verification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    showMessage(messageDiv, 'Код подтверждения отправлен на почту', 'success');
+                    document.getElementById('register-form').style.display = 'none';
+                    document.getElementById('verify-form').style.display = 'block';
+                    startResendTimer();
+                    setupCodeInputs();
+                } else {
+                    showMessage(messageDiv, data.detail || 'Ошибка отправки кода', 'error');
+                }
+            } catch (error) {
+                showMessage(messageDiv, 'Ошибка соединения с сервером', 'error');
+            }
+        }
+        
+        async function verifyCode() {
+            const digits = document.querySelectorAll('.code-digit');
+            let code = '';
+            digits.forEach(d => code += d.value);
+            
+            const messageDiv = document.getElementById('verify-message');
+            
+            if (code.length !== 6) {
+                showMessage(messageDiv, 'Введите 6-значный код', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/verify-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: pendingRegistration.email, code: code })
+                });
+                
+                if (response.ok) {
+                    const adminToken = localStorage.getItem('access_token');
+                    const registerResponse = await fetch('/admin/register', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': adminToken ? `Bearer ${adminToken}` : ''
+                        },
+                        body: JSON.stringify({
+                            login: pendingRegistration.email,
+                            full_name: pendingRegistration.name,
+                            password: pendingRegistration.password
+                        })
+                    });
+                    
+                    if (registerResponse.ok) {
+                        showMessage(messageDiv, '✅ Регистрация успешна! Перенаправление...', 'success');
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 2000);
+                    } else {
+                        const err = await registerResponse.json();
+                        showMessage(messageDiv, err.detail || 'Ошибка создания пользователя', 'error');
+                    }
+                } else {
+                    const err = await response.json();
+                    showMessage(messageDiv, err.detail || 'Неверный код подтверждения', 'error');
+                }
+            } catch (error) {
+                showMessage(messageDiv, 'Ошибка проверки кода', 'error');
+            }
+        }
+        
+        async function resendCode() {
+            if (!pendingRegistration) return;
+            const messageDiv = document.getElementById('verify-message');
+            
+            try {
+                const response = await fetch('/send-verification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: pendingRegistration.email })
+                });
+                
+                if (response.ok) {
+                    showMessage(messageDiv, 'Код отправлен повторно', 'success');
+                    startResendTimer();
+                } else {
+                    showMessage(messageDiv, 'Ошибка отправки кода', 'error');
+                }
+            } catch (error) {
+                showMessage(messageDiv, 'Ошибка соединения', 'error');
+            }
+        }
+        
+        function startResendTimer() {
+            const btn = document.getElementById('resend-btn');
+            timeLeft = 60;
+            btn.disabled = true;
+            
+            if (resendTimer) clearInterval(resendTimer);
+            resendTimer = setInterval(() => {
+                timeLeft--;
+                if (timeLeft <= 0) {
+                    btn.disabled = false;
+                    btn.textContent = 'Отправить код повторно';
+                    clearInterval(resendTimer);
+                } else {
+                    btn.textContent = `Отправить повторно (${timeLeft} сек)`;
+                }
+            }, 1000);
+        }
+        
+        function setupCodeInputs() {
+            const inputs = document.querySelectorAll('.code-digit');
+            inputs.forEach((input, index) => {
+                input.value = '';
+                input.addEventListener('keyup', (e) => {
+                    if (e.key >= '0' && e.key <= '9' && input.value.length === 1) {
+                        if (index < 5) inputs[index + 1].focus();
+                    } else if (e.key === 'Backspace' && !input.value) {
+                        if (index > 0) inputs[index - 1].focus();
+                    }
+                });
+            });
+            inputs[0].focus();
+        }
+        
+        function showMessage(element, text, type) {
+            element.textContent = text;
+            element.className = `message ${type}`;
+            setTimeout(() => {
+                element.style.display = 'none';
+            }, 5000);
+        }
+        
+        document.addEventListener('contextmenu', (e) => e.preventDefault());
+    </script>
+</body>
+</html>
